@@ -1,4 +1,5 @@
 import os
+from typing import Optional, Tuple
 
 import requests
 from geoserver.catalog import Catalog
@@ -6,14 +7,34 @@ from geoserver.catalog import Catalog
 from xcube_geodb.core.message import Message
 
 
-class GeoserverUser:
-    def __init__(self, admin_user_name: str = None, admin_pwd: str = None, url: str = None):
+class GeoserverError(ValueError):
+    pass
+
+
+class Geoserver:
+    def __init__(self,
+                 user_name: Optional[str] = None,
+                 user_password: Optional[str] = None,
+                 url: Optional[str] = None,
+                 admin_user_name: Optional[str] = None,
+                 admin_pwd: Optional[str] = None
+                 ):
+
+        self._user_name = user_name or os.environ.get("GEOSERVER_USER")
+        self._user_password = user_password or os.environ.get("GEOSERVER_PASSWORD")
+
         self._admin_user_name = admin_user_name or os.environ.get("GEOSERVER_ADMIN_USER")
         self._admin_pwd = admin_pwd or os.environ.get("GEOSERVER_ADMIN_PASSWORD")
         self._url = url or os.environ.get("GEOSERVER_URL")
 
+        raise NotImplementedError("Geoserver tool not implemented yet.")
+
     def __repr__(self):
         return f"Geoserver at Url: {self.url}"
+
+    @property
+    def user_name(self):
+        return self._user_name
 
     @property
     def admin_user_name(self):
@@ -23,31 +44,34 @@ class GeoserverUser:
     def url(self):
         return self._url
 
-    def get_catalog(self, user_name: str, password: str) -> object:
+    def _raise_for_admin(self):
+        if not self._admin_user_name:
+            raise GeoserverError("You need admin privileges for this operation.")
+
+    def get_catalog(self) -> object:
         """
 
         Returns:
             Catalog: A Geoserver catalog instance
         """
-        return Catalog(self._url + "/rest/", username=user_name, password=password)
+        return Catalog(self._url + "/rest/", username=self._user_name, password=self._user_password)
 
-    def register_user(self, user_name: str, password: str) -> Message:
+    def register_user(self) -> Message:
         """
         Registers a user in the PostGres database. Needs admin privileges.
-
-        Args:
-            user_name: User name of the user
-            password: Password for the user
 
         Returns:
             str: Success message
         """
+
+        self._raise_for_admin()
+
         geoserver_url = f"{self._url}/rest/security/usergroup/users"
 
         user = {
             "org.geoserver.rest.security.xml.JaxbUser": {
-                "userName": user_name,
-                "password": password,
+                "userName": self._user_name,
+                "password": self._user_password,
                 "enabled": True
             }
         }
@@ -55,29 +79,33 @@ class GeoserverUser:
         r = requests.post(geoserver_url, json=user, auth=(self._admin_user_name, self._admin_pwd))
         r.raise_for_status()
 
-        return Message(f"User {user_name} successfully added")
+        return Message(f"User {self._user_name} successfully added")
 
-    def register_user_catalog(self, cat_name: str) -> Message:
+    def register_user_catalog(self) -> Message:
+        self._raise_for_admin()
+
         cat = Catalog(self._url + "/rest/", username=self._admin_user_name, password=self._admin_pwd)
-        ws = cat.get_workspace(cat_name)
+        ws = cat.get_workspace(self._user_name)
         if not ws:
-            cat.create_workspace(cat_name)
+            cat.create_workspace(self._user_name)
 
-        return Message(f"Catalog {cat_name} successfully added")
+        return Message(f"Catalog {self._user_name} successfully added")
 
-    def register_user_datastore(self, user_name: str, password: str) -> Message:
-        geoserver_url = f"{self._url}/rest/workspaces/{user_name}/datastores"
+    def register_user_datastore(self) -> Message:
+        self._raise_for_admin()
+
+        geoserver_url = f"{self._url}/rest/workspaces/{self._user_name}/datastores"
 
         db = {
             "dataStore": {
-                "name": user_name + "_geodb",
+                "name": self._user_name + "_geodb",
                 "connectionParameters": {
                     "entry": [
                         {"@key": "host", "$": "db-dcfs-geodb.cbfjgqxk302m.eu-central-1.rds.amazonaws.com"},
                         {"@key": "port", "$": "5432"},
                         {"@key": "database", "$": "geodb"},
-                        {"@key": "user", "$": user_name},
-                        {"@key": "passwd", "$": password},
+                        {"@key": "user", "$": self._user_name},
+                        {"@key": "passwd", "$": self._user_password},
                         {"@key": "dbtype", "$": "postgis"}
                     ]
                 }
@@ -87,14 +115,16 @@ class GeoserverUser:
         r = requests.post(geoserver_url, json=db, auth=(self._admin_user_name, self._admin_pwd))
         r.raise_for_status()
 
-        return Message(f"Datastore {user_name} successfully added")
+        return Message(f"Datastore {self._user_name} successfully added")
 
-    def register_user_access(self, user_name: str) -> Message:
+    def register_user_access(self) -> Message:
+        self._raise_for_admin()
+
         rule = {
-                "rule": {
-                    "@resource": f"{user_name}.*.a",
-                    "text": "GROUP_ADMIN"
-                }
+            "rule": {
+                "@resource": f"{self._user_name}.*.a",
+                "text": f"{self._user_name.upper()}_ADMIN"
+            }
         }
 
         geoserver_url = f"{self._url}/rest/security/acl/layers"
@@ -102,7 +132,75 @@ class GeoserverUser:
         r = requests.post(geoserver_url, json=rule, auth=(self._admin_user_name, self._admin_pwd))
         r.raise_for_status()
 
-        return Message(f"User access for {user_name} successfully added")
+        return Message(f"User access for {self._user_name} successfully added")
 
-    def publish_collection(self, collection: str):
-        pass
+    def register_user_role(self) -> Message:
+        self._raise_for_admin()
+
+        geoserver_url = f"{self._url}/rest//roles/role/{self._user_name}"
+
+        r = requests.post(geoserver_url, json={}, auth=(self._admin_user_name, self._admin_pwd))
+        r.raise_for_status()
+
+        return Message(f"User access for {self._user_name} successfully added")
+
+    def publish_collection(self,
+                           collection: str,
+                           bbox: Tuple[float, float, float, float],
+                           bbox_latlon: Tuple[float, float, float, float]):
+
+        feature_type = {"featureType": {
+                "name": collection,
+                "nativName": f"{self._user_name}_{collection}",
+                "namespace": {
+                    "name": self._user_name,
+                    "href": f"{self._url}/rest/namespaces/{self._user_name}.json"
+                },
+                "title": f"{self._user_name}_{collection}",
+                "store": {
+                    "@class": "dataStore",
+                    "name": f"{self._user_name}:{self._user_name}_geodb",
+                    "href": f"{self._url}/rest/workspaces/helge/datastores/{self._user_name}:{self._user_name}.json"
+                },
+                "nativeBoundingBox": {
+                    "minx": bbox[0],
+                    "maxx": bbox[1],
+                    "miny": bbox[2],
+                    "maxy": bbox[3],
+                    "crs": {
+                        "@class": "projected",
+                        "$": "EPSG:3794"
+                    }
+                },
+                "latLonBoundingBox": {
+                    "minx": bbox_latlon[0],
+                    "maxx": bbox_latlon[1],
+                    "miny": bbox_latlon[2],
+                    "maxy": bbox_latlon[3],
+                    "crs": "EPSG:4326"
+
+                }
+            }
+        }
+
+        geoserver_url = f"{self._url}/rest/rest/workspaces/{self._user_name}/datastores/" \
+                        f"{self._user_name}:{self._user_name}_geodb/featuretypes"
+
+        r = requests.post(geoserver_url, json=feature_type, auth=(self._admin_user_name, self._admin_pwd))
+        r.raise_for_status()
+
+        bbox_str = [str(item) for item in bbox]
+
+        wms_url = f"{self._user_name}/wms?" \
+                  f"service=WMS&" \
+                  f"version=1.1.0&" \
+                  f"request=GetMap&" \
+                  f"layers={self._user_name}%3A" \
+                  f"{collection}&" \
+                  f"bbox={','.join(bbox_str)}&" \
+                  f"width=768&" \
+                  f"height=496&" \
+                  f"srs=EPSG%3A3794&" \
+                  f"format=application/openlayers"
+
+        return Message(f"Collection {collection} published ({wms_url}).")
