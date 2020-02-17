@@ -14,7 +14,7 @@ from xcube_geodb.core.collections import Collections
 from xcube_geodb.core.message import Message
 from xcube_geodb.defaults import GEODB_API_DEFAULT_PARAMETERS
 
-LOGGER = logging.getLogger("geodb.core")
+LOGGER = logging.getLogger("geodb.core.geodb")
 logging.basicConfig(level=logging.INFO)
 
 
