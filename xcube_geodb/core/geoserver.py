@@ -96,7 +96,7 @@ class Geoserver:
             }
         }
 
-        r = self._session.post(geoserver_url, json=user)
+        r = self._session.post(geoserver_url, json=user, verify=False)
         r.raise_for_status()
 
         return Message(f"User {self._user_name} successfully added")
@@ -147,12 +147,21 @@ class Geoserver:
         return Message(f"User access for {self._user_name} successfully added")
 
     def register_user_role(self) -> Message:
-        geoserver_url = f"{self._url}/rest/roles/role/{self._user_name}"
+        geoserver_url = f"{self._url}/rest/security/roles/role/{self._user_name.upper()}_ADMIN"
 
         r = self._session.post(geoserver_url, json={}, auth=(self._admin_user_name, self._admin_pwd))
         r.raise_for_status()
 
         return Message(f"User role for {self._user_name} successfully added")
+
+    def associate_user_role(self) -> Message:
+        geoserver_url = f"{self._url}/rest/security/roles/role/{self._user_name.upper()}_ADMIN" \
+                        f"/user/{self._user_name.upper()}_ADMIN"
+
+        r = self._session.post(geoserver_url, json={}, auth=(self._admin_user_name, self._admin_pwd))
+        r.raise_for_status()
+
+        return Message("USer role successfully associated")
 
     def publish_collection(self,
                            collection: str,
@@ -193,10 +202,11 @@ class Geoserver:
         }
         }
 
-        geoserver_url = f"{self._url}/rest/rest/workspaces/{self._user_name}/datastores/" \
+        geoserver_url = f"{self._url}/rest/workspaces/{self._user_name}/datastores/" \
                         f"{self._user_name}:{self._user_name}_geodb/featuretypes"
-
+        print(geoserver_url)
         r = self._session.post(geoserver_url, json=feature_type, auth=(self._admin_user_name, self._admin_pwd))
+        print(r.reason)
         r.raise_for_status()
 
         bbox_str = [str(item) for item in bbox]

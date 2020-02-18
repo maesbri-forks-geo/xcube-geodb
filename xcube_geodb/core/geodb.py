@@ -241,7 +241,7 @@ class GeoDBClient(object):
 
         r = None
         try:
-            r = requests.get(self._get_full_url(path=path), params=params, headers=headers)
+            r = requests.get(self._get_full_url(path=path), params=params, headers=headers, verify=False)
             r.raise_for_status()
         except requests.exceptions.HTTPError:
             raise GeoDBError(r.json()['message'])
