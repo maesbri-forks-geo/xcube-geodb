@@ -23,11 +23,6 @@ class GeoDBError(ValueError):
 
 
 class GeoDBClient(object):
-    minx = 0
-    maxx = 1
-    miny = 2
-    maxy = 3
-
     def __init__(self,
                  namespace: Optional[str] = None,
                  server_url: Optional[str] = None,
@@ -322,7 +317,8 @@ class GeoDBClient(object):
         Examples:
 
             >>> geodb = GeoDBClient()
-            >>> collections = {'[MyCollection]': {'crs': 1234, 'properties': {'[MyProp1]': 'float', '[MyProp2]': 'date'}}}
+            >>> collections = {'[MyCollection]': {'crs': 1234, 'properties': \
+                {'[MyProp1]': 'float', '[MyProp2]': 'date'}}}
             >>> geodb.create_collections(collections)
         """
 
@@ -625,9 +621,14 @@ class GeoDBClient(object):
     def _gdf_to_csv(self, gpdf: GeoDataFrame, crs: int = None) -> str:
         if crs is None:
             try:
-                crs = gpdf.crs["init"].replace("epsg:", "")
+                if isinstance(gpdf.crs, dict):
+                    crs = gpdf.crs["init"].replace("epsg:", "")
+                else:
+                    import re
+                    m = re.search(r'epsg:([0-9]*)', gpdf.crs.srs)
+                    crs = m.group(1)
             except Exception:
-                raise ValueError("Could not guess the dataframe's crs. Please specify.")
+                raise GeoDBError("Could not guess the dataframe's crs. Please specify.")
 
         def add_srid(point):
             return f'SRID={str(crs)};' + str(point)
@@ -724,10 +725,10 @@ class GeoDBClient(object):
 
         r = self.post('/rpc/geodb_get_by_bbox', headers=headers, payload={
             "collection": dn,
-            "minx": bbox[GeoDBClient.minx],
-            "miny": bbox[GeoDBClient.miny],
-            "maxx": bbox[GeoDBClient.maxx],
-            "maxy": bbox[GeoDBClient.maxy],
+            "minx": bbox[0],
+            "miny": bbox[1],
+            "maxx": bbox[2],
+            "maxy": bbox[3],
             "bbox_mode": comparison_mode,
             "bbox_crs": bbox_crs,
             "limit": limit,
@@ -781,6 +782,15 @@ class GeoDBClient(object):
         else:
             return DataFrame(columns=["Empty Result"])
 
+    def _raise_for_injection(self, select: str):
+        select = select.lower()
+        if "update" in select \
+                or "delete" in select \
+                or "drop" in select \
+                or "create" in select\
+                or "function" in select:
+            raise GeoDBError("Please don't inject!")
+
     def get_collection_pg(self, collection: str, select: str = "*", where: Optional[str] = None,
                           group: Optional[str] = None, order: Optional[str] = None, limit: Optional[int] = None,
                           offset: Optional[int] = None, namespace: Optional[str] = None) \
@@ -818,7 +828,10 @@ class GeoDBClient(object):
 
         headers = {'Accept': 'application/vnd.pgrst.object+json'}
 
-        qry = f'SELECT {select} FROM "{dn}" '
+        self._raise_for_injection(select)
+
+        # noinspection SqlInjection
+        qry = f"SELECT {select} FROM {dn} "
 
         if where:
             qry += f'WHERE {where} '
@@ -835,7 +848,7 @@ class GeoDBClient(object):
         if limit and offset:
             qry += f'OFFSET {offset} '
 
-        self._log(qry, logging.DEBUG)
+        self._log(message=qry, level=logging.DEBUG)
 
         r = self.post("/rpc/geodb_get_raw", headers=headers, payload={'collection': collection, 'qry': qry})
         r.raise_for_status()
