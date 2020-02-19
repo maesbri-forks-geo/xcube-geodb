@@ -26,6 +26,7 @@ class GeoDBClient(object):
     def __init__(self,
                  namespace: Optional[str] = None,
                  server_url: Optional[str] = None,
+
                  server_port: Optional[int] = None,
                  client_id: Optional[str] = None,
                  client_secret: Optional[str] = None,
@@ -241,7 +242,7 @@ class GeoDBClient(object):
 
         r = None
         try:
-            r = requests.get(self._get_full_url(path=path), params=params, headers=headers, verify=False)
+            r = requests.get(self._get_full_url(path=path), params=params, headers=headers)
             r.raise_for_status()
         except requests.exceptions.HTTPError:
             raise GeoDBError(r.json()['message'])
@@ -693,7 +694,8 @@ class GeoDBClient(object):
         Args:
             collection: Table to get
             bbox (int, int, int, int): minx, maxx, miny, maxy
-            comparison_mode: Filter mode. Can be 'contains' or 'within' ['contains']
+            comparison_mode: Filter mode. Can be 'contains', 'within', 'touches', 'overlaps', 'intersects', 'equals',
+                                            'disjoint', 'crosses', ['contains']
             bbox_crs: Projection code. [4326]
             op: Operator for where (AND, OR) ['AND']
             where: Additional SQL where statement
@@ -722,6 +724,8 @@ class GeoDBClient(object):
         self._raise_for_stored_procedure_exists('geodb_get_by_bbox')
 
         headers = {'Accept': 'application/vnd.pgrst.object+json'}
+
+        comparison_function = f"ST_{comparison_mode.title()}"
 
         r = self.post('/rpc/geodb_get_by_bbox', headers=headers, payload={
             "collection": dn,

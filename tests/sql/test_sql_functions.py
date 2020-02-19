@@ -52,8 +52,8 @@ class GeoDBSqlTest(unittest.TestCase):
         self._postgresql.clear_cache()
 
     def test_query_by_bbox(self):
-        sql_filter = "SELECT geodb_get_by_bbox('postgres_land_use', 452750.0, 88909.549, 464000.0, " \
-                     "102486.299, 'contains', 3794)"
+        sql_filter = "SELECT geodb_get_by_bbox('postgres_land_use'::text, 452750.0, 88909.549, 464000.0, " \
+                     "102486.299, 'contains'::text, 3794, 'id>-id'::text, 'AND'::text,1, 100)"
         self._cursor.execute(sql_filter)
 
         res = self._cursor.fetchone()

@@ -41,6 +41,8 @@ class Geoserver:
         if self._admin_user_name:
             self._session.auth = (self._admin_user_name, self._admin_pwd)
 
+        self._wms_url = None
+
     def __repr__(self):
         return f"Geoserver at Url: {self.url}"
 
@@ -96,7 +98,7 @@ class Geoserver:
             }
         }
 
-        r = self._session.post(geoserver_url, json=user, verify=False)
+        r = self._session.post(geoserver_url, json=user)
         r.raise_for_status()
 
         return Message(f"User {self._user_name} successfully added")
@@ -176,7 +178,7 @@ class Geoserver:
                     "name": self._user_name,
                     "href": f"{self._url}/rest/namespaces/{self._user_name}.json"
                 },
-                "title": f"{self._user_name}_{collection}",
+                "title": f"{collection}",
                 "store": {
                     "@class": "dataStore",
                     "name": f"{self._user_name}:{self._user_name}_geodb",
@@ -185,8 +187,8 @@ class Geoserver:
                 },
                 "nativeBoundingBox": {
                     "minx": bbox[0],
-                    "maxx": bbox[1],
-                    "miny": bbox[2],
+                    "miny": bbox[1],
+                    "maxx": bbox[2],
                     "maxy": bbox[3],
                     "crs": {
                         "@class": "projected",
@@ -195,32 +197,39 @@ class Geoserver:
                 },
                 "latLonBoundingBox": {
                     "minx": bbox_latlon[0],
-                    "maxx": bbox_latlon[1],
-                    "miny": bbox_latlon[2],
+                    "miny": bbox_latlon[1],
+                    "maxx": bbox_latlon[2],
                     "maxy": bbox_latlon[3],
                     "crs": "EPSG:4326"
                 }
             }
         }
-
+        # /workspaces/{workspaceName}/datastores/{datastoreName}/featuretypes
         geoserver_url = f"{self._url}/rest/workspaces/{self._user_name}/datastores/{self._user_name}_geodb/featuretypes"
-        print(geoserver_url)
+
         r = self._session.post(geoserver_url, json=feature_type, auth=(self._admin_user_name, self._admin_pwd))
-        print(r.reason)
+
         r.raise_for_status()
 
         bbox_str = [str(item) for item in bbox]
 
-        wms_url = f"{self._user_name}/wms?" \
-                  f"service=WMS&" \
-                  f"version=1.1.0&" \
-                  f"request=GetMap&" \
-                  f"layers={self._user_name}%3A" \
-                  f"{collection}&" \
-                  f"bbox={','.join(bbox_str)}&" \
-                  f"width=768&" \
-                  f"height=496&" \
-                  f"srs=EPSG%3A3794&" \
-                  f"format=application/openlayers"
+        self._wms_url = f"{self._url}/{self._user_name}/wms?" \
+                        f"service=WMS&" \
+                        f"version=1.1.0&" \
+                        f"request=GetMap&" \
+                        f"layers={self._user_name}%3A" \
+                        f"{collection}&" \
+                        f"bbox={','.join(bbox_str)}&" \
+                        f"width=768&" \
+                        f"height=496&" \
+                        f"srs=EPSG%3A3794&" \
+                        f"format=application/openlayers"
 
-        return Message(f"Collection {collection} published ({wms_url}).")
+        return Message(f"Collection {collection} published ({self._wms_url}).")
+
+    def unpublish_collection(self, collection: str):
+        geoserver_url = f"{self._url}/rest/layers/{collection}"
+
+        r = self._session.delete(geoserver_url, json={}, auth=(self._admin_user_name, self._admin_pwd))
+
+        r.raise_for_status()

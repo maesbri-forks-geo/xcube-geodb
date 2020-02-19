@@ -74,72 +74,90 @@ $BODY$;
 
 
 
-DROP FUNCTION IF EXISTS public.geodb_get_by_bbox(text, double precision, double precision, double precision, double precision, VARCHAR, int, int, int);
-CREATE OR REPLACE FUNCTION public.geodb_get_by_bbox(IN collection text,
-											  IN minx double precision,
-											  IN miny double precision,
-											  IN maxx double precision,
-											  IN maxy double precision,
-											  IN bbox_mode VARCHAR(255) DEFAULT 'within',
-											  IN bbox_crs int DEFAULT 4326,
-                                              IN "where" text DEFAULT 'id > 0'::text,
-                                              IN op text DEFAULT 'AND'::text,
-											  IN "limit" int DEFAULT 0,
-											  IN "offset" int DEFAULT 0)
+-- FUNCTION: public.geodb_get_by_bbox(text, double precision, double precision, double precision, double precision, character varying, integer, text, text, integer, integer)
+
+-- DROP FUNCTION public.geodb_get_by_bbox(text, double precision, double precision, double precision, double precision, character varying, integer, text, text, integer, integer);
+
+CREATE OR REPLACE FUNCTION public.geodb_get_by_bbox_v2(
+    collection text,
+    minx double precision,
+    miny double precision,
+    maxx double precision,
+    maxy double precision,
+    bbox_mode character varying DEFAULT 'within'::character varying,
+    bbox_crs integer DEFAULT 4326,
+    "where" text DEFAULT 'id > 0'::text,
+    op text DEFAULT 'AND'::text,
+    "limit" integer DEFAULT 0,
+    "offset" integer DEFAULT 0)
     RETURNS TABLE(src json)
     LANGUAGE 'plpgsql'
 
+    COST 100
+    VOLATILE
+    ROWS 1000
 AS $BODY$
 DECLARE
-	bbox_func VARCHAR;
+    bbox_func VARCHAR;
     row_ct int;
-	lmt_str text;
+    lmt_str text;
     qry text;
 BEGIN
-	CASE bbox_mode
-		WHEN 'within' THEN
-			bbox_func := 'ST_Within';
-		WHEN 'contains' THEN
-			bbox_func := 'ST_Contains';
-		ELSE
-			RAISE EXCEPTION 'bbox mode % does not exist. Use ''within'' | ''contains''', bbox_mode USING ERRCODE = 'data_exception';
-	END CASE;
+    CASE bbox_mode
+        WHEN 'within' THEN
+            bbox_func := 'ST_Within';
+        WHEN 'contains' THEN
+            bbox_func := 'ST_Contains';
+        WHEN 'intersects' THEN
+            bbox_func := 'ST_Intersects';
+        WHEN 'touches' THEN
+            bbox_func := 'ST_Touches';
+        WHEN 'overlaps' THEN
+            bbox_func := 'ST_Overlaps';
+        WHEN 'crosses' THEN
+            bbox_func := 'ST_Crosses';
+        ELSE
+            RAISE EXCEPTION 'bbox mode % does not exist. Use ''within'' | ''contains''', bbox_mode USING ERRCODE = 'data_exception';
+        END CASE;
 
-	lmt_str := '';
+    lmt_str := '';
 
-	IF "limit" > 0 THEN
-		lmt_str := ' LIMIT ' || "limit";
-	END IF;
+    IF "limit" > 0 THEN
+        lmt_str := ' LIMIT ' || "limit";
+    END IF;
 
-	IF "offset" > 0 THEN
-		lmt_str := lmt_str || ' OFFSET ' || "offset";
-	END IF;
+    IF "offset" > 0 THEN
+        lmt_str := lmt_str || ' OFFSET ' || "offset";
+    END IF;
 
-	qry := format(
-		'SELECT JSON_AGG(src) as js
-		 FROM (SELECT * FROM %I
-		 WHERE (%s) %s %s(''SRID=%s;POLYGON((' || minx
-                                       || ' ' || miny
-                                       || ', ' || maxx
-                                       || ' ' || miny
-                                       || ', ' || maxx
-                                       || ' ' || maxy
-                                       || ', ' || minx
-                                       || ' ' ||  maxy
-                                       || ', ' || minx
-                                       || ' ' || miny
-                                       || '))'', geometry) '
-                                       || 'ORDER BY id '
-                                       || lmt_str || ') as src',
-        collection, "where", op, bbox_func, bbox_crs
-	);
+    qry := format(
+                                                                                                        'SELECT JSON_AGG(src) as js
+                                                                                                         FROM (SELECT * FROM %I
+                                                                                                         WHERE (%s) %s %s(''SRID=%s;POLYGON((' || minx
+                                                                                                    || ' ' || miny
+                                                                                            || ', ' || maxx
+                                                                                    || ' ' || miny
+                                                                            || ', ' || maxx
+                                                                    || ' ' || maxy
+                                                            || ', ' || minx
+                                                    || ' ' ||  maxy
+                                            || ', ' || minx
+                                    || ' ' || miny
+                            || '))'', geometry) '
+                        || 'ORDER BY id '
+                    || lmt_str || ') as src',
+                                                                                                        collection, "where", op, bbox_func, bbox_crs
+        );
+
+    raise notice '%s', qry;
 
     RETURN QUERY EXECUTE qry;
 
-	GET DIAGNOSTICS row_ct = ROW_COUNT;
+    GET DIAGNOSTICS row_ct = ROW_COUNT;
 
     IF row_ct < 1 THEN
-	   RAISE EXCEPTION 'Only % rows!', row_ct;
+        RAISE EXCEPTION 'Only % rows!', row_ct;
     END IF;
 END
 $BODY$;
+
