@@ -168,42 +168,42 @@ class Geoserver:
                            bbox: Tuple[float, float, float, float],
                            bbox_latlon: Tuple[float, float, float, float]):
 
-        feature_type = {"featureType": {
-            "name": collection,
-            "nativName": f"{self._user_name}_{collection}",
-            "namespace": {
-                "name": self._user_name,
-                "href": f"{self._url}/rest/namespaces/{self._user_name}.json"
-            },
-            "title": f"{self._user_name}_{collection}",
-            "store": {
-                "@class": "dataStore",
-                "name": f"{self._user_name}:{self._user_name}_geodb",
-                "href": f"{self._url}/rest/workspaces/helge/datastores/{self._user_name}:{self._user_name}.json"
-            },
-            "nativeBoundingBox": {
-                "minx": bbox[0],
-                "maxx": bbox[1],
-                "miny": bbox[2],
-                "maxy": bbox[3],
-                "crs": {
-                    "@class": "projected",
-                    "$": "EPSG:3794"
+        feature_type = {"featureType":
+            {
+                "name": collection,
+                "nativName": f"{self._user_name}_{collection}",
+                "namespace": {
+                    "name": self._user_name,
+                    "href": f"{self._url}/rest/namespaces/{self._user_name}.json"
+                },
+                "title": f"{self._user_name}_{collection}",
+                "store": {
+                    "@class": "dataStore",
+                    "name": f"{self._user_name}:{self._user_name}_geodb",
+                    "href": f"{self._url}/rest/workspaces/{self._user_name}/datastores/"
+                            f"{self._user_name}.json"
+                },
+                "nativeBoundingBox": {
+                    "minx": bbox[0],
+                    "maxx": bbox[1],
+                    "miny": bbox[2],
+                    "maxy": bbox[3],
+                    "crs": {
+                        "@class": "projected",
+                        "$": "EPSG:3794"
+                    }
+                },
+                "latLonBoundingBox": {
+                    "minx": bbox_latlon[0],
+                    "maxx": bbox_latlon[1],
+                    "miny": bbox_latlon[2],
+                    "maxy": bbox_latlon[3],
+                    "crs": "EPSG:4326"
                 }
-            },
-            "latLonBoundingBox": {
-                "minx": bbox_latlon[0],
-                "maxx": bbox_latlon[1],
-                "miny": bbox_latlon[2],
-                "maxy": bbox_latlon[3],
-                "crs": "EPSG:4326"
-
             }
         }
-        }
 
-        geoserver_url = f"{self._url}/rest/workspaces/{self._user_name}/datastores/" \
-                        f"{self._user_name}:{self._user_name}_geodb/featuretypes"
+        geoserver_url = f"{self._url}/rest/workspaces/{self._user_name}/datastores/{self._user_name}_geodb/featuretypes"
         print(geoserver_url)
         r = self._session.post(geoserver_url, json=feature_type, auth=(self._admin_user_name, self._admin_pwd))
         print(r.reason)
